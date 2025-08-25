@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 // 🔧 Usa tu URL de Render (ya está configurada)
-const API_URL = 'https://ao-cnvf.onrender.com';
+const API_URL = 'const API_URL = 'https://ao-cnvf.onrender.com/api/ai';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -167,3 +167,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
