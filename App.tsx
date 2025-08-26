@@ -1,170 +1,234 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
+  View,
   Text,
   TextInput,
-  View,
-  Button,
   ScrollView,
-  ActivityIndicator,
+  TouchableOpacity,
+  StyleSheet,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  SafeAreaView
 } from 'react-native';
 
-// 🔧 Usa tu URL de Render (ya está configurada)
-const API_URL = 'const API_URL = 'https://ao-cnvf.onrender.com/api/ai';
-
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-};
+const API_URL = 'https://ao-cnvf.onrender.com/api/ai'; // tu backend
 
 export default function App() {
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [texto, setTexto] = useState('');
+  const [mensajes, setMensajes] = useState<any[]>([]);
+  const [modoGerente, setModoGerente] = useState(true); // Puedes controlar esto
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!texto.trim()) return;
 
-    const userMessage: Message = { role: 'user', content: input };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setLoading(true);
-    setError('');
+    const ticket = {
+      id: Date.now().toString(),
+      problema: texto,
+      status: 'abierto',
+      createdAt: new Date().toISOString()
+    };
+
+    setMensajes((prev) => [...prev, { tipo: 'usuario', texto }]);
+    setTexto('');
 
     try {
-      const response = await fetch(`${API_URL}/api/ai`, {
+      const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: 'gemini', // o 'openai'
-          system: 'Eres un asistente técnico que ayuda con solicitudes de prueba.',
-          ticket: {
-            id: Date.now().toString(),
-            problema: input,
-            clasificacion: 'I+D',
-            donde: 'app',
-            status: 'abierto',
-            createdAt: new Date().toISOString(),
-          }
+          system: 'Eres un asistente operativo experto en diagnóstico técnico.',
+          ticket,
+          provider: 'openai'
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await res.json();
       const parsed = JSON.parse(data.reply);
 
-      const aiMessage: Message = {
-        role: 'assistant',
-        content: parsed.advice || 'Sin respuesta de la IA'
-      };
+      setMensajes((prev) => [
+        ...prev,
+        { tipo: 'respuesta', contenido: parsed, ticket }
+      ]);
+    } catch (e) {
+      console.error(e);
+      setMensajes((prev) => [
+        ...prev,
+        {
+          tipo: 'respuesta',
+          contenido: {
+            advice: 'Error del servidor o API.',
+            updatedPlanteamiento: '',
+            decision: 'pendiente',
+            bottlenecks: []
+          }
+        }
+      ]);
+    }
+  };
 
-      setMessages(prev => [...prev, aiMessage]);
-    } catch (err) {
-      console.error(err);
-      const errorMessage = (err as Error).message || 'Error desconocido';
-      setError('❌ Error al procesar IA: ' + errorMessage);
-    } finally {
-      setLoading(false);
+  const escalarTicket = async (ticket) => {
+    try {
+      await fetch('https://ao-cnvf.onrender.com/api/collect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...ticket,
+          status: 'investigacion',
+          escaladoPor: 'gerente'
+        })
+      });
+      alert('🔍 Ticket escalado a investigación.');
+    } catch (e) {
+      alert('Error al escalar ticket.');
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <Text style={styles.title}>🌱 Asistente Operativo</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0b1120' }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>🌱 Asistente Operativo</Text>
+        </View>
 
-      <ScrollView style={styles.chat} contentContainerStyle={{ paddingBottom: 20 }}>
-        {messages.map((msg, index) => (
-          <View
-            key={index}
-            style={msg.role === 'user' ? styles.userMsg : styles.aiMsg}
-          >
-            <Text style={styles.msgText}>{msg.content}</Text>
-          </View>
-        ))}
-      </ScrollView>
+        <ScrollView style={{ flex: 1, padding: 16 }}>
+          {mensajes.map((m, i) => (
+            <View
+              key={i}
+              style={[
+                styles.bubble,
+                m.tipo === 'usuario' ? styles.user : styles.bot
+              ]}
+            >
+              {m.tipo === 'usuario' && <Text style={styles.userText}>{m.texto}</Text>}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+              {m.tipo === 'respuesta' && (
+                <View>
+                  <Text style={styles.label}>✅ Recomendación:</Text>
+                  <Text style={styles.section}>{m.contenido.advice}</Text>
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          placeholder="Escribe tu mensaje..."
-          style={styles.input}
-          value={input}
-          onChangeText={setInput}
-        />
-        <Button title="Enviar" onPress={sendMessage} disabled={loading} />
-      </View>
+                  <Text style={styles.label}>🧠 Planteamiento actualizado:</Text>
+                  <Text style={styles.section}>
+                    {m.contenido.updatedPlanteamiento}
+                  </Text>
 
-      {loading && <ActivityIndicator size="small" color="#008000" />}
-    </KeyboardAvoidingView>
+                  <Text style={styles.label}>📌 Decisión:</Text>
+                  <Text style={styles.section}>{m.contenido.decision}</Text>
+
+                  <Text style={styles.label}>🔍 Cuellos de botella:</Text>
+                  {m.contenido.bottlenecks.map((b, i) => (
+                    <Text key={i} style={styles.bullet}>• {b}</Text>
+                  ))}
+
+                  {modoGerente && (
+                    <TouchableOpacity
+                      style={styles.escalarBtn}
+                      onPress={() => escalarTicket(m.ticket)}
+                    >
+                      <Text style={styles.escalarText}>🔺 Escalar a Investigación</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Escribe tu mensaje…"
+            placeholderTextColor="#999"
+            value={texto}
+            onChangeText={setTexto}
+          />
+          <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
+            <Text style={styles.sendText}>ENVIAR</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 60,
-    paddingHorizontal: 15,
-    backgroundColor: '#f2f2f2',
+  header: {
+    padding: 16,
+    borderBottomColor: '#1f2937',
+    borderBottomWidth: 1
   },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    textAlign: 'center',
-    color: '#333',
+    color: '#93c5fd',
+    fontSize: 20,
+    fontWeight: 'bold'
   },
-  chat: {
-    flex: 1,
-    marginBottom: 10,
+  bubble: {
+    padding: 14,
+    marginVertical: 8,
+    borderRadius: 12
   },
-  userMsg: {
+  user: {
+    backgroundColor: '#2563eb',
     alignSelf: 'flex-end',
-    backgroundColor: '#d1e7dd',
-    borderRadius: 10,
-    padding: 10,
-    marginVertical: 5,
-    maxWidth: '80%',
+    borderTopRightRadius: 0
   },
-  aiMsg: {
+  bot: {
+    backgroundColor: '#1f2937',
     alignSelf: 'flex-start',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 10,
-    marginVertical: 5,
-    maxWidth: '80%',
+    borderTopLeftRadius: 0
   },
-  msgText: {
-    color: '#333',
+  userText: {
+    color: '#fff'
+  },
+  label: {
+    color: '#22c55e',
+    fontWeight: 'bold',
+    marginBottom: 4,
+    marginTop: 10
+  },
+  section: {
+    color: '#e5e7eb'
+  },
+  bullet: {
+    marginLeft: 12,
+    color: '#ddd'
   },
   inputContainer: {
     flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-    marginBottom: 20,
+    padding: 10,
+    backgroundColor: '#0f172a',
+    borderTopColor: '#1e293b',
+    borderTopWidth: 1
   },
   input: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingHorizontal: 15,
+    borderRadius: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ccc',
+    fontSize: 16
   },
-  error: {
-    color: 'red',
-    marginBottom: 10,
+  sendBtn: {
+    paddingHorizontal: 12,
+    justifyContent: 'center'
+  },
+  sendText: {
+    color: '#22c55e',
+    fontWeight: 'bold'
+  },
+  escalarBtn: {
+    marginTop: 12,
+    backgroundColor: '#facc15',
+    padding: 8,
+    borderRadius: 8
+  },
+  escalarText: {
     textAlign: 'center',
-  },
+    color: '#000',
+    fontWeight: 'bold'
+  }
 });
 
